@@ -23,7 +23,9 @@ db.init_db()
 WEBHOOK_HOST = os.environ.get("WEBHOOK_URL")
 WEBHOOK_PATH = "/bot"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-
+# Webhook sozlamalari tagidan mana buni qo'shing:
+WEBAPP_HOST = "0.0.0.0"
+WEBAPP_PORT = int(os.environ.get("PORT", 8000))
 class BotStates(StatesGroup):
     kutish_manga_nomi = State()
     kutish_manga_janr = State()
