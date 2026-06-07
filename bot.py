@@ -21,7 +21,7 @@ db.init_db()
 # WEBHOOK VA PORT SOZLAMALARI
 WEBHOOK_HOST = os.environ.get("WEBHOOK_URL")
 WEBHOOK_PATH = "/bot"
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" if WEBHOOK_HOST else ""
 
 WEBAPP_HOST = "0.0.0.0"
 WEBAPP_PORT = int(os.environ.get("PORT", 10000))
@@ -84,11 +84,10 @@ async def kanalga_yangi_kontent_yuborish(content_type, nomi, janr, rasm, holati,
         sarlavha = "✨ YANGI LIGHT NOVEL ✨"; emoji = "📚"; link_prefix = "novel_v"
     
     holati_display = "Ongoing" if holati.lower() == "ongoing" else "Completed"
-    text = f"\n{sarlavha}\n\n{emoji} <b>Nom:</b> {nomi}\n📚 <b>Janri:</b> {janr}\n📌 <b>Holati:</b> {holati_display}\n\n━━━━━━━━━━━━━━━━━━\n⏱️ <b>Yangi qism chiqdi!</b>\n\n🚀 <b>Botda ko'rish:</b> @{bot_info.username}\n\n#{content_type.lower()} #anime #manga\n"
+    text = f"\n{sarlavha}\n\n{emoji} <b>Nom:</b> {nomi}\n📚 <b>Janri:</b> {janr}\n📌 <b>Holati:</b> {holati_display}\n\n━━━━━━━━━━━━━━━━━━\n⏱️ <b>Botga yangi kontent qo'shildi!</b>\n\n🚀 <b>Botda ko'rish:</b> @{bot_info.username}\n"
     
     inline_btn = types.InlineKeyboardMarkup(row_width=1)
     inline_btn.add(types.InlineKeyboardButton("📖 Mutolaa qilish / Ko'rish", url=f"https://t.me/{bot_info.username}?start={link_prefix}_{content_id}"))
-    inline_btn.add(types.InlineKeyboardButton("Kanal", url=f"https://t.me/{kanallar[0].lstrip('@')}"))
     
     try:
         await bot.send_photo(chat_id=kanallar[0], photo=rasm, caption=text, reply_markup=inline_btn, parse_mode="HTML")
@@ -109,16 +108,22 @@ async def kanalga_yangi_qism_yuborish(content_type, content_id, content_nomi, qi
     else:
         emoji = "📚"; qism_type = "Bob"; link_prefix = "novel_v"
     
-    text = f"\n📣 <b>YANGI QISM YUKLANDI!</b>\n\n{emoji} <b>{content_nomi}</b>\n🆕 <b>{qism_raqami}-{qism_type}</b>\n\n━━━━━━━━━━━━━━━━━━\n⏱️ <b>Hoziroq ko'rishingiz mumkin!</b>\n\n🚀 <b>Botda ko'rish:</b> @{bot_info.username}\n\n#{content_type.lower()} #anime #manga\n"
+    text = f"\n📣 <b>YANGI QISM YUKLANDI!</b>\n\n{emoji} <b>{content_nomi}</b>\n🆕 <b>{qism_raqami}-{qism_type}</b>\n\n━━━━━━━━━━━━━━━━━━\n⏱️ <b>Hoziroq ko'rishingiz mumkin!</b>\n\n🚀 <b>Botda ko'rish:</b> @{bot_info.username}\n"
     
     inline_btn = types.InlineKeyboardMarkup(row_width=1)
     inline_btn.add(types.InlineKeyboardButton("📖 O'qish / Ko'rish", url=f"https://t.me/{bot_info.username}?start={link_prefix}_{content_id}"))
-    inline_btn.add(types.InlineKeyboardButton("Kanal", url=f"https://t.me/{kanallar[0].lstrip('@')}"))
     
     try:
         await bot.send_photo(chat_id=kanallar[0], photo=rasm, caption=text, reply_markup=inline_btn, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Qism xabari yuborishda xato: {e}")
+
+# === GLOBAL BEKOR QILISH HANDLERI (FSM dan ustun turadi) ===
+@dp.message_handler(lambda message: message.text in ["❌ Bekor qilish", "🚪 Orqaga"], state='*')
+async def bekor_qilish_global(message: types.Message, state: FSMContext):
+    await state.finish()
+    is_admin = True if db.admin_tekshirish(message.from_user.id, config.BOSH_ADMIN) in ["bosh", "ishchi"] else False
+    await message.answer("❌ Amaliyot bekor qilindi va bosh menyuga qaytildi.", reply_markup=kb.bosh_menu(is_admin=is_admin))
 
 @dp.message_handler(commands=['start'], state='*')
 async def start_cmd(message: types.Message, state: FSMContext):
@@ -135,13 +140,32 @@ async def start_cmd(message: types.Message, state: FSMContext):
             if c_type == "manga":
                 nomi, rasm, janr, h = db.manga_rasm_va_nomi(c_id)
                 boblar = db.manga_boblar_royxati(c_id)
-                if rasm and boblar:
-                    await message.answer_photo(photo=rasm, caption=f"📖 **Manga:** {nomi}\n🎭 **Janr:** {janr}", reply_markup=kb.boblar_list_keyboard(boblar), parse_mode="Markdown")
+                if rasm:
+                    await message.answer_photo(photo=rasm, caption=f"📖 <b>Manga:</b> {nomi}\n🎭 <b>Janr:</b> {janr}\n📌 <b>Holati:</b> {h}", reply_markup=kb.boblar_list_keyboard(boblar) if boblar else None, parse_mode="HTML")
                 return
 
     is_admin = True if db.admin_tekshirish(message.from_user.id, config.BOSH_ADMIN) in ["bosh", "ishchi"] else False
     text = db.sozlama_olish("welcome_text", config.STANDART_XUSH_KELIBSIZ)
     await message.answer(text, reply_markup=kb.bosh_menu(is_admin=is_admin))
+
+# === FOYDALANUVCHILAR UCHUN RO'YXATLAR ===
+@dp.message_handler(lambda message: message.text == "📖 Barcha Mangalar", state='*')
+async def barcha_mangalar_handler(message: types.Message):
+    if await ban_tekshir(message.from_user.id, message): return
+    mangalar = db.mangalar_royxati()
+    if not mangalar:
+        await message.answer("📭 Hozircha mangalar mavjud emas.")
+        return
+    await message.answer("📚 Mavjud mangalar ro'yxati:", reply_markup=kb.content_list_keyboard(mangalar))
+
+@dp.message_handler(lambda message: message.text == "🎬 Barcha Animalar", state='*')
+async def barcha_animalar_handler(message: types.Message):
+    if await ban_tekshir(message.from_user.id, message): return
+    animalar = db.animalar_royxati()
+    if not animalar:
+        await message.answer("📭 Hozircha animalar mavjud emas.")
+        return
+    await message.answer("🎬 Mavjud animalar ro'yxati:", reply_markup=kb.content_list_keyboard(animalar))
 
 @dp.message_handler(lambda message: message.text == "👑 Admin Panel", state='*')
 async def admin_panel(message: types.Message, state: FSMContext):
@@ -159,12 +183,6 @@ async def chiqish(message: types.Message, state: FSMContext):
     await state.finish()
     is_admin = True if db.admin_tekshirish(message.from_user.id, config.BOSH_ADMIN) in ["bosh", "ishchi"] else False
     await message.answer("👋 Paneldan chiqdingiz!", reply_markup=kb.bosh_menu(is_admin=is_admin))
-
-@dp.message_handler(lambda message: message.text == "❌ Bekor qilish", state='*')
-async def bekor(message: types.Message, state: FSMContext):
-    await state.finish()
-    is_admin = True if db.admin_tekshirish(message.from_user.id, config.BOSH_ADMIN) in ["bosh", "ishchi"] else False
-    await message.answer("❌ Bekor qilindi!", reply_markup=kb.bosh_menu(is_admin=is_admin))
 
 # === MANGA QOSHISH ===
 @dp.message_handler(lambda message: message.text == "➕ Yangi Manga Qo'shish", state='*')
@@ -417,18 +435,6 @@ async def kanal_saqlash(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("✅ Kanal qo'shildi!", reply_markup=kb.majburiy_obuna_boshqaruv())
 
-@dp.message_handler(lambda message: message.text == "➕ Kanal link qo'shish", state='*')
-async def kanal_qoshish(message: types.Message):
-    if db.admin_tekshirish(message.from_user.id, config.BOSH_ADMIN) != "bosh": return
-    await message.answer("📢 Kanal linkini kiriting:", reply_markup=kb.bekor_qilish_btn())
-    await BotStates.kutish_kanal_link.set()
-
-@dp.message_handler(state=BotStates.kutish_kanal_link)
-async def kanal_saqlash(message: types.Message, state: FSMContext):
-    db.kanal_qoshish(message.text.strip())
-    await state.finish()
-    await message.answer("✅ Kanal qo'shildi!", reply_markup=kb.majburiy_obuna_boshqaruv())
-
 @dp.message_handler(lambda message: message.text == "📊 Hozirgi kanallar", state='*')
 async def kanallar_ko_rsat(message: types.Message):
     if db.admin_tekshirish(message.from_user.id, config.BOSH_ADMIN) != "bosh": return
@@ -458,29 +464,36 @@ async def reklama_xizmati(message: types.Message):
     )
     await message.answer(reklama_matn, reply_markup=markup, parse_mode="HTML")
 
-# === WEBHOOK SERVER ===
+# === WEBHOOK SERVER INTEGRATSIYASI ===
 async def handle_webhook(request: web.Request) -> web.Response:
     try:
         json_data = await request.json()
         update = types.Update(**json_data)
-        Dispatcher.set_current(dp)
+        
+        # Aiogram kontekstini to'g'ri o'rnatish
+        types.Update.set_current(update)
         Bot.set_current(bot)
-        await dp.process_update(update)  # Bu yerda aiogram 2.x uchun to'g'ri buyruq qo'yildi
+        Dispatcher.set_current(dp)
+        
+        await dp.process_update(update)
         return web.Response(text="ok")
     except Exception as e:
         logger.error(f"Webhook xatosi: {e}")
         return web.Response(text="error", status=400)
 
 async def on_startup(app):
-    logger.info(f"Webhook: {WEBHOOK_URL}")
-    try:
-        await bot.set_webhook(WEBHOOK_URL)
-        logger.info("✅ Webhook o'rnatildi")
-    except Exception as e:
-        logger.error(f"Webhook xatosi: {e}")
+    logger.info(f"Webhook URL yuklanmoqda: {WEBHOOK_URL}")
+    if WEBHOOK_URL:
+        try:
+            await bot.set_webhook(WEBHOOK_URL)
+            logger.info("✅ Webhook muvaffaqiyatli o'rnatildi")
+        except Exception as e:
+            logger.error(f"Webhook o'rnatishda xato: {e}")
+    else:
+        logger.warning("⚠️ WEBHOOK_URL topilmadi, webhook o'rnatilmadi.")
 
 async def on_shutdown(app):
-    logger.info("Bot o'chmoqda...")
+    logger.info("Bot to'xtatilmoqda...")
     await bot.delete_webhook()
     await bot.session.close()
 
