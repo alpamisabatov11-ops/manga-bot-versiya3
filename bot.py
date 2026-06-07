@@ -1,3 +1,4 @@
+# bot.py - TOLIQ WEBHOOK VERSIYASI (KANAL XABARLARI BILAN)
 import re
 import logging
 import os
@@ -18,13 +19,11 @@ bot = Bot(token=config.TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
 db.init_db()
 
-# WEBHOOK VA PORT SOZLAMALARI
-WEBHOOK_HOST = os.environ.get("WEBHOOK_URL")
+WEBHOOK_HOST = os.environ.get("WEBHOOK_URL", "https://manga-bot.onrender.com")
 WEBHOOK_PATH = "/bot"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
-
 WEBAPP_HOST = "0.0.0.0"
-WEBAPP_PORT = int(os.environ.get("PORT", 10000))
+WEBAPP_PORT = int(os.environ.get("PORT", 8000))
 
 class BotStates(StatesGroup):
     kutish_manga_nomi = State()
@@ -70,53 +69,129 @@ async def ban_tekshir(user_id, message: types.Message) -> bool:
     return False
 
 async def kanalga_yangi_kontent_yuborish(content_type, nomi, janr, rasm, holati, content_id):
+    """Kanalga batafsil yangi content xabar yuborish"""
     kanallar = db.kanallar_olish()
-    if not kanallar: return
+    if not kanallar: 
+        return
+    
     bot_info = await bot.get_me()
     
     if content_type == "manga":
-        sarlavha = "✨ YANGI MANGA ✨"; emoji = "📖"; link_prefix = "manga_v"
+        sarlavha = "✨ YANGI MANGA ✨"
+        emoji = "📖"
+        link_prefix = "manga_v"
     elif content_type == "anime":
-        sarlavha = "✨ YANGI ANIME ✨"; emoji = "🎬"; link_prefix = "anime_v"
+        sarlavha = "✨ YANGI ANIME ✨"
+        emoji = "🎬"
+        link_prefix = "anime_v"
     elif content_type == "manhwa":
-        sarlavha = "✨ YANGI MANXWA ✨"; emoji = "📘"; link_prefix = "manhwa_v"
+        sarlavha = "✨ YANGI MANXWA ✨"
+        emoji = "📘"
+        link_prefix = "manhwa_v"
     else:
-        sarlavha = "✨ YANGI LIGHT NOVEL ✨"; emoji = "📚"; link_prefix = "novel_v"
+        sarlavha = "✨ YANGI LIGHT NOVEL ✨"
+        emoji = "📚"
+        link_prefix = "novel_v"
     
     holati_display = "Ongoing" if holati.lower() == "ongoing" else "Completed"
-    text = f"\n{sarlavha}\n\n{emoji} <b>Nom:</b> {nomi}\n📚 <b>Janri:</b> {janr}\n📌 <b>Holati:</b> {holati_display}\n\n━━━━━━━━━━━━━━━━━━\n⏱️ <b>Yangi qism chiqdi!</b>\n\n🚀 <b>Botda ko'rish:</b> @{bot_info.username}\n\n#{content_type.lower()} #anime #manga\n"
+    
+    text = f"""
+{sarlavha}
+
+{emoji} <b>Nom:</b> {nomi}
+📚 <b>Janri:</b> {janr}
+📌 <b>Holati:</b> {holati_display}
+
+━━━━━━━━━━━━━━━━━━
+⏱️ <b>Yangi qism chiqdi!</b>
+
+🚀 <b>Botda ko'rish:</b> @{bot_info.username}
+
+#{content_type.lower()} #anime #manga
+"""
     
     inline_btn = types.InlineKeyboardMarkup(row_width=1)
-    inline_btn.add(types.InlineKeyboardButton("📖 Mutolaa qilish / Ko'rish", url=f"https://t.me/{bot_info.username}?start={link_prefix}_{content_id}"))
-    inline_btn.add(types.InlineKeyboardButton("Kanal", url=f"https://t.me/{kanallar[0].lstrip('@')}"))
+    inline_btn.add(
+        types.InlineKeyboardButton(
+            "📖 Mutolaa qilish / Ko'rish", 
+            url=f"https://t.me/{bot_info.username}?start={link_prefix}_{content_id}"
+        )
+    )
+    inline_btn.add(
+        types.InlineKeyboardButton("Kanal", url=f"https://t.me/{kanallar[0].lstrip('@')}")
+    )
     
     try:
-        await bot.send_photo(chat_id=kanallar[0], photo=rasm, caption=text, reply_markup=inline_btn, parse_mode="HTML")
+        await bot.send_photo(
+            chat_id=kanallar[0], 
+            photo=rasm, 
+            caption=text, 
+            reply_markup=inline_btn, 
+            parse_mode="HTML"
+        )
+        logger.info(f"✅ Kanalga {content_type} xabari: {nomi}")
     except Exception as e:
         logger.error(f"Kanal xabari yuborishda xato: {e}")
 
 async def kanalga_yangi_qism_yuborish(content_type, content_id, content_nomi, qism_raqami, rasm):
+    """Yangi bob/epizod qo'shilganda kanalga xabar"""
     kanallar = db.kanallar_olish()
-    if not kanallar: return
+    if not kanallar:
+        return
+    
     bot_info = await bot.get_me()
     
     if content_type == "manga":
-        emoji = "📖"; qism_type = "Bob"; link_prefix = "manga_v"
+        emoji = "📖"
+        qism_type = "Bob"
+        link_prefix = "manga_v"
     elif content_type == "anime":
-        emoji = "🎬"; qism_type = "Epizod"; link_prefix = "anime_v"
+        emoji = "🎬"
+        qism_type = "Epizod"
+        link_prefix = "anime_v"
     elif content_type == "manhwa":
-        emoji = "📘"; qism_type = "Bob"; link_prefix = "manhwa_v"
+        emoji = "📘"
+        qism_type = "Bob"
+        link_prefix = "manhwa_v"
     else:
-        emoji = "📚"; qism_type = "Bob"; link_prefix = "novel_v"
+        emoji = "📚"
+        qism_type = "Bob"
+        link_prefix = "novel_v"
     
-    text = f"\n📣 <b>YANGI QISM YUKLANDI!</b>\n\n{emoji} <b>{content_nomi}</b>\n🆕 <b>{qism_raqami}-{qism_type}</b>\n\n━━━━━━━━━━━━━━━━━━\n⏱️ <b>Hoziroq ko'rishingiz mumkin!</b>\n\n🚀 <b>Botda ko'rish:</b> @{bot_info.username}\n\n#{content_type.lower()} #anime #manga\n"
+    text = f"""
+📣 <b>YANGI QISM YUKLANDI!</b>
+
+{emoji} <b>{content_nomi}</b>
+🆕 <b>{qism_raqami}-{qism_type}</b>
+
+━━━━━━━━━━━━━━━━━━
+⏱️ <b>Hoziroq ko'rishingiz mumkin!</b>
+
+🚀 <b>Botda ko'rish:</b> @{bot_info.username}
+
+#{content_type.lower()} #anime #manga
+"""
     
     inline_btn = types.InlineKeyboardMarkup(row_width=1)
-    inline_btn.add(types.InlineKeyboardButton("📖 O'qish / Ko'rish", url=f"https://t.me/{bot_info.username}?start={link_prefix}_{content_id}"))
-    inline_btn.add(types.InlineKeyboardButton("Kanal", url=f"https://t.me/{kanallar[0].lstrip('@')}"))
+    inline_btn.add(
+        types.InlineKeyboardButton(
+            "📖 O'qish / Ko'rish",
+            url=f"https://t.me/{bot_info.username}?start={link_prefix}_{content_id}"
+        )
+    )
+    inline_btn.add(
+        types.InlineKeyboardButton("Kanal", url=f"https://t.me/{kanallar[0].lstrip('@')}")
+    )
     
     try:
-        await bot.send_photo(chat_id=kanallar[0], photo=rasm, caption=text, reply_markup=inline_btn, parse_mode="HTML")
+        await bot.send_photo(
+            chat_id=kanallar[0],
+            photo=rasm,
+            caption=text,
+            reply_markup=inline_btn,
+            parse_mode="HTML"
+        )
+        logger.info(f"✅ Kanalga {qism_type} xabari: {content_nomi} {qism_raqami}")
     except Exception as e:
         logger.error(f"Qism xabari yuborishda xato: {e}")
 
@@ -350,7 +425,6 @@ async def bob_fayl(message: types.Message, state: FSMContext):
     elif message.video: file_id = message.video.file_id
     else: file_id = message.photo[-1].file_id
     
-    nomi = None; rasm = None
     if turi == "manga":
         db.yangi_bob_baza_qoshish(c_id, raqam, file_id)
         nomi, rasm, _, _ = db.manga_rasm_va_nomi(c_id)
@@ -367,6 +441,7 @@ async def bob_fayl(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer(f"✅ {raqam}-qism yuklandi!", reply_markup=kb.bosh_admin_panel())
     
+    # KANALGA YANGI QISM XABARI
     if nomi and rasm:
         await kanalga_yangi_qism_yuborish(turi, c_id, nomi, raqam, rasm)
 
@@ -451,9 +526,7 @@ async def handle_webhook(request: web.Request) -> web.Response:
     try:
         json_data = await request.json()
         update = types.Update(**json_data)
-        Dispatcher.set_current(dp)
-        Bot.set_current(bot)
-        await dp.process_update(update)
+        await dp.feed_update(bot, update)
         return web.Response(text="ok")
     except Exception as e:
         logger.error(f"Webhook xatosi: {e}")
@@ -484,6 +557,6 @@ def create_app() -> web.Application:
     return app
 
 if __name__ == '__main__':
-    logger.info(f"Server {WEBAPP_PORT} portida ishga tushmoqchi...")
+    logger.info(f"Server {WEBAPP_PORT} portida ishga tushmoquyapti...")
     app = create_app()
     web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
